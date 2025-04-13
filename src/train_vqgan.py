@@ -62,7 +62,7 @@ class Trainer:
         self.epoch_meters = {t: RunningMean(window=len(self.train_dataloader)).to(self.device) for t in track if "epoch" in t}
     
     def _load_state(self, ckpt_path: str):
-        ckpt = torch.load(ckpt_path)
+        ckpt = torch.load(ckpt_path, map_location='cpu')
         self.last_epoch = ckpt["epoch"] if "epoch" in ckpt else 0
         self.vqgan.load_state_dict(ckpt["vqgan"])
         self.disc.load_state_dict(ckpt["disc"])
@@ -123,28 +123,29 @@ class Trainer:
                     d_loss.backward()
                     self.opt_disc.step()
 
-                    self.running_meters["train/running/perceptual_loss"].update(perceptual_loss)
-                    self.running_meters["train/running/rec_loss"].update(rec_loss)
+                    # add q_loss
+                    self.running_meters["train/running/perceptual_loss"].update(perceptual_loss.detach())
+                    self.running_meters["train/running/rec_loss"].update(rec_loss.detach())
                     self.running_meters["train/running/disc_factor"].update(disc_factor)
-                    self.running_meters["train/running/lambda"].update(lamb)
-                    self.running_meters["train/running/g_loss"].update(gen_loss)
-                    self.running_meters["train/running/vq_loss"].update(vqgan_loss)
-                    self.running_meters["train/running/d_loss"].update(d_loss)
+                    self.running_meters["train/running/lambda"].update(lamb.detach())
+                    self.running_meters["train/running/g_loss"].update(gen_loss.detach())
+                    self.running_meters["train/running/vq_loss"].update(vqgan_loss.detach())
+                    self.running_meters["train/running/d_loss"].update(d_loss.detach())
 
-                    self.epoch_meters["train/epoch/perceptual_loss"].update(perceptual_loss)
-                    self.epoch_meters["train/epoch/rec_loss"].update(rec_loss)
+                    self.epoch_meters["train/epoch/perceptual_loss"].update(perceptual_loss.detach())
+                    self.epoch_meters["train/epoch/rec_loss"].update(rec_loss.detach())
                     self.epoch_meters["train/epoch/disc_factor"].update(disc_factor)
-                    self.epoch_meters["train/epoch/lambda"].update(lamb)
-                    self.epoch_meters["train/epoch/g_loss"].update(gen_loss)
-                    self.epoch_meters["train/epoch/vq_loss"].update(vqgan_loss)
-                    self.epoch_meters["train/epoch/d_loss"].update(d_loss)
+                    self.epoch_meters["train/epoch/lambda"].update(lamb.detach())
+                    self.epoch_meters["train/epoch/g_loss"].update(gen_loss.detach())
+                    self.epoch_meters["train/epoch/vq_loss"].update(vqgan_loss.detach())
+                    self.epoch_meters["train/epoch/d_loss"].update(d_loss.detach())
 
                     if i % self.log_every == 0:
                         with torch.no_grad():
                             real_fake_images = torch.cat([batch[:3].add(1).mul(0.5), rec[:3].add(1).mul(0.5)], dim=2)
                             
                             logs = {name: meter.compute().item() for name, meter in self.running_meters.items()}
-                            logs["train/img"] = real_fake_images.cpu().detach()
+                            logs["train/img"] = real_fake_images.detach().cpu()
                             
                             self.logger.log(logs, global_step)
                             
@@ -195,7 +196,7 @@ if __name__ == '__main__':
     parser.add_argument('--log-every', type=int, default=100, help='Number of train steps before a logging step')
 
     args = parser.parse_args()
-    args.data_path = "/Users/petrushkovm/Downloads/celeba_hq_256"
+    # args.data_path = "/Users/petrushkovm/Downloads/celeba_hq_256"
 
 
     # Start a new wandb run to track this script.
