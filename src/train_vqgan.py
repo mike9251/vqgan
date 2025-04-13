@@ -36,14 +36,15 @@ class Trainer:
         self.vqgan = VQGAN(config).to(self.device)
         self.disc = NLayerDiscriminator().to(self.device)
         self.disc.apply(init_weights)
+        
+        self.opt_vqgan = torch.optim.Adam(self.vqgan.parameters(),  lr=config["lr"], betas=(config["beta1"], config["beta2"]))
+        self.opt_disc = torch.optim.Adam(self.disc.parameters(), lr=config["lr"], betas=(config["beta1"], config["beta2"]))
 
         if config["resume_from"]:
             self._load_state(config["resume_from"])
 
         self.perceptual_loss = LPIPS().eval().to(self.device)
 
-        self.opt_vqgan = torch.optim.Adam(self.vqgan.parameters(),  lr=config["lr"], betas=(config["beta1"], config["beta2"]))
-        self.opt_disc = torch.optim.Adam(self.disc.parameters(), lr=config["lr"], betas=(config["beta1"], config["beta2"]))
 
         self.train_dataloader = get_dataloader(config["data_path"], config["img_size"], config["batch_size"], config["num_workers"], config["ddp"])
         self.epochs = config["epochs"]
@@ -120,6 +121,7 @@ class Trainer:
                     d_loss = disc_factor * 0.5 * (d_loss_fake + d_loss_real)
                     self.opt_disc.zero_grad(set_to_none=True)
                     d_loss.backward()
+                    self.opt_disc.step()
 
                     self.running_meters["train/running/perceptual_loss"].update(perceptual_loss)
                     self.running_meters["train/running/rec_loss"].update(rec_loss)
