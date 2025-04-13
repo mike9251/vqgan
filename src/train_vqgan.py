@@ -19,6 +19,13 @@ import logging
 logging.basicConfig(filename=None, encoding='utf-8', level=logging.DEBUG)
 
 
+import random
+random.seed(0)
+np.random.seed(0)
+torch.manual_seed(0)
+
+
+
 class Trainer:
     def __init__(self, config):
         self.prep_train_dir()

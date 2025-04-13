@@ -3,7 +3,7 @@ from torch.utils.data import Dataset, DataLoader, DistributedSampler
 import cv2
 from pathlib import Path
 import numpy as np
-
+import random
 
 class CelebaDataset(Dataset):
     def __init__(self, path, img_size):
@@ -32,7 +32,22 @@ def get_dataloader(data_dir, img_size, batch_size, num_workers=0, ddp=False):
     dataset = CelebaDataset(data_dir, img_size)
     # print(f"Dataet::Num images={len(dataset)}")
     sampler = DistributedSampler(dataset) if ddp else None
-    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=(sampler is None), sampler=sampler)
+
+    def seed_worker(worker_id):
+        worker_seed = torch.initial_seed() % 2**32
+        np.random.seed(worker_seed)
+        random.seed(worker_seed)
+
+    g = torch.Generator()
+    g.manual_seed(0)
+
+    dataloader = DataLoader(dataset,
+                            batch_size=batch_size,
+                            num_workers=num_workers,
+                            shuffle=(sampler is None),
+                            sampler=sampler,
+                            worker_init_fn=seed_worker,
+                            generator=g)
     return dataloader
 
 if __name__ == "__main__":
