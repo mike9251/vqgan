@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torchvision import utils as tv_utils
-from torchmetrics.aggregation import RunningMean, MeanMetric
+from torchmetrics.aggregation import RunningMean
 
 import argparse
 from tqdm import tqdm
