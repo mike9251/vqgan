@@ -80,8 +80,8 @@ class Trainer:
                 "train/epoch/perceptual_loss", "train/epoch/rec_loss", "train/epoch/disc_factor",
                 "train/epoch/lambda", "train/epoch/g_loss", "train/epoch/vq_loss", "train/epoch/d_loss"]
         
-        self.running_meters = {t: RunningMean(window=self.log_every).to(self.device) for t in track if "running" in t}
-        self.epoch_meters = {t: RunningMean(window=len(self.train_dataloader)).to(self.device) for t in track if "epoch" in t}
+        self.running_meters = {t: RunningMean(window=self.log_every) for t in track if "running" in t}
+        self.epoch_meters = {t: RunningMean(window=len(self.train_dataloader)) for t in track if "epoch" in t}
     
     def _load_state(self, ckpt_path: str):
         ckpt = torch.load(ckpt_path, map_location='cpu')
@@ -146,21 +146,21 @@ class Trainer:
                     self.opt_disc.step()
 
                     # add q_loss
-                    self.running_meters["train/running/perceptual_loss"].update(perceptual_loss.detach())
-                    self.running_meters["train/running/rec_loss"].update(rec_loss.detach())
+                    self.running_meters["train/running/perceptual_loss"].update(perceptual_loss.detach().cpu())
+                    self.running_meters["train/running/rec_loss"].update(rec_loss.detach().cpu())
                     self.running_meters["train/running/disc_factor"].update(disc_factor)
-                    self.running_meters["train/running/lambda"].update(lamb.detach())
-                    self.running_meters["train/running/g_loss"].update(gen_loss.detach())
-                    self.running_meters["train/running/vq_loss"].update(vqgan_loss.detach())
-                    self.running_meters["train/running/d_loss"].update(d_loss.detach())
+                    self.running_meters["train/running/lambda"].update(lamb.detach().cpu())
+                    self.running_meters["train/running/g_loss"].update(gen_loss.detach().cpu())
+                    self.running_meters["train/running/vq_loss"].update(vqgan_loss.detach().cpu())
+                    self.running_meters["train/running/d_loss"].update(d_loss.detach().cpu())
 
-                    self.epoch_meters["train/epoch/perceptual_loss"].update(perceptual_loss.detach())
-                    self.epoch_meters["train/epoch/rec_loss"].update(rec_loss.detach())
+                    self.epoch_meters["train/epoch/perceptual_loss"].update(perceptual_loss.detach().cpu())
+                    self.epoch_meters["train/epoch/rec_loss"].update(rec_loss.detach().cpu())
                     self.epoch_meters["train/epoch/disc_factor"].update(disc_factor)
-                    self.epoch_meters["train/epoch/lambda"].update(lamb.detach())
-                    self.epoch_meters["train/epoch/g_loss"].update(gen_loss.detach())
-                    self.epoch_meters["train/epoch/vq_loss"].update(vqgan_loss.detach())
-                    self.epoch_meters["train/epoch/d_loss"].update(d_loss.detach())
+                    self.epoch_meters["train/epoch/lambda"].update(lamb.detach().cpu())
+                    self.epoch_meters["train/epoch/g_loss"].update(gen_loss.detach().cpu())
+                    self.epoch_meters["train/epoch/vq_loss"].update(vqgan_loss.detach().cpu())
+                    self.epoch_meters["train/epoch/d_loss"].update(d_loss.detach().cpu())
 
                     if i % self.log_every == 0:
                         with torch.no_grad():
@@ -242,3 +242,6 @@ if __name__ == '__main__':
     trainer.train()
 
     # logger.finish()
+
+    # add color logging
+    # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
