@@ -3,7 +3,6 @@ import torch.nn.functional as F
 from torchvision import utils as tv_utils
 from torchmetrics.aggregation import RunningMean
 
-import argparse
 from tqdm import tqdm
 import numpy as np
 import os
@@ -221,53 +220,6 @@ def main(config: DictConfig):
 
 if __name__ == '__main__':
     main()
-    # parser = argparse.ArgumentParser(description="VQGAN")
-    # parser.add_argument('--latent-dim', type=int, default=256, help='Latent dimension n_z (default: 256)')
-    # parser.add_argument('--img-size', type=int, default=256, help='Image height and width (default: 256)')
-    # parser.add_argument('--num-codebook-vectors', type=int, default=1024, help='Number of codebook vectors (default: 256)')
-    # parser.add_argument('--beta', type=float, default=0.25, help='Commitment loss scalar (default: 0.25)')
-    # parser.add_argument('--img-channels', type=int, default=3, help='Number of channels of images (default: 3)')
-    # parser.add_argument('--data-path', type=str, default='/data', help='Path to data (default: /data)')
-    # parser.add_argument('--device', type=str, default="mps", help='Which device the training is on')
-    # parser.add_argument('--batch-size', type=int, default=3, help='Input batch size for training (default: 6)')
-    # parser.add_argument('--num-workers', type=int, default=0, help='Num threads to load data in background(default: 0)')
-    # parser.add_argument('--epochs', type=int, default=100, help='Number of epochs to train (default: 50)')
-    # parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate (default: 0.0002)')
-    # parser.add_argument('--beta1', type=float, default=0.5, help='Adam beta param (default: 0.0)')
-    # parser.add_argument('--beta2', type=float, default=0.9, help='Adam beta param (default: 0.999)')
-    # parser.add_argument('--disc-start', type=int, default=10000, help='When to start the discriminator (default: 0)')
-    # parser.add_argument('--disc-factor', type=float, default=0.1, help='')
-    # parser.add_argument('--rec-loss-factor', type=float, default=1., help='Weighting factor for reconstruction loss.')
-    # parser.add_argument('--perc-loss-factor', type=float, default=1., help='Weighting factor for perceptual loss.')
-    # parser.add_argument('--ddp', type=bool, default=False, help='DDP training or not')
-    # parser.add_argument('--resume-from', type=str, default="", help='Path to the checkpoint to resume training from')
-    # parser.add_argument('--log-every', type=int, default=100, help='Number of train steps before a logging step')
-
-    # args = parser.parse_args()
-    # # args.data_path = "/Users/petrushkovm/Downloads/celeba_hq_256"
-
-
-    # # Start a new wandb run to track this script.
-    # # logger = wandb.init(
-    # #     # Set the wandb entity where your project will be logged (generally your team name).
-    # #     entity="soapbox92",
-    # #     # Set the wandb project where this run will be logged.
-    # #     project="VQGAN_Celeba",
-    # #     # Track hyperparameters and run metadata.
-    # #     config={
-    # #         "learning_rate": args.lr,
-    # #     "epochs": args.epochs,
-    # #     "batch_size": args.batch_size,
-    # #     },
-    # # )
-    
-    # trainer = Trainer(vars(args))
-
-    # # trainer.logger = logger
-
-    # trainer.train()
-
-    # logger.finish()
 
     # add color logging
     # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
