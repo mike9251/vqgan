@@ -1,0 +1,45 @@
+# training
+task_name: "VQGANTransformer_Celeba_256"
+epochs: 100
+resume_from: null
+log_every: 100
+device: "cuda"
+ddp: False
+
+# data
+data_path: "/Users/petrushkovm/Downloads/celeba_hq_256"
+img_size: 256
+batch_size: 14
+num_workers: 8
+
+# vqgan
+num_codebook_vectors: 1024
+latent_dim: 256
+beta: 0.25
+
+# transformer
+vqgan_weights: /Users/petrushkovm/Projects/VQGAN/checkpoints/vqgan_disc_epoch_34.pt
+sos_token: 0
+pkeep: 0.5
+vocab_size: 1024
+embed_dim: 1024
+block_size: 512
+n_layers: 24
+n_head: 16
+n_unmasked: 0
+embed_pdrop: 0.0
+resid_pdrop: 0.0
+attn_pdrop: 0.0
+
+# Paths configuration
+root_dir: ${hydra.run.dir}
+data_dir: ${root_dir}/data/
+log_dir: ${root_dir}/logs/
+output_dir: ${hydra:runtime.output_dir} # this dir is formed below
+work_dir: ${hydra:runtime.cwd}
+
+hydra:
+  # Output directory for logs, checkpoints, etc.
+  run:
+    dir: ${log_dir}/${task_name}/runs/${now:%Y-%m-%d}_${now:%H-%M-%S}
+

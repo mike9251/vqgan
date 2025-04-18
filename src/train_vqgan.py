@@ -47,7 +47,6 @@ set_seed(3910574)
 
 class Trainer:
     def __init__(self, config: DictConfig):
-        self.prep_train_dir()
 
         self.device = torch.device(config.device)
 
@@ -103,27 +102,13 @@ class Trainer:
         logging.info(f"Resume training from {ckpt_path} from last epoch {self.last_epoch}")
     
     def _save_checkpoint(self, epoch):
-
         os.makedirs(self.output_dir / "checkpoints", exist_ok=True)
-
-        self.vqgan.cpu()
-        self.disc.cpu()
-        
         torch.save({"vqgan": self.vqgan.state_dict(),
                     "disc": self.disc.state_dict(),
                     "vqgan_opt": self.opt_vqgan.state_dict(),
                     "disc_opt": self.opt_disc.state_dict(),
                     "epoch": epoch},
                     os.path.join(self.output_dir / "checkpoints", f"vqgan_disc_epoch_{epoch}.pt"))
-
-        self.vqgan = self.vqgan.to(self.device)
-        self.disc = self.disc.to(self.device)
-
-        
-    @staticmethod
-    def prep_train_dir():
-        os.makedirs("results", exist_ok=True)
-        os.makedirs("checkpoints", exist_ok=True)
         
     def train(self):
         steps_per_epoch = len(self.train_dataloader)
@@ -152,9 +137,8 @@ class Trainer:
 
                     vqgan_loss = perc_rec_loss + q_loss + disc_factor * lamb * gen_loss
 
-                    self.opt_vqgan.zero_grad(set_to_none=True)
+                    self.opt_vqgan.zero_grad()
                     vqgan_loss.backward(retain_graph=True)
-
                     self.opt_vqgan.step()
 
                     # disc update
@@ -164,7 +148,7 @@ class Trainer:
                     d_loss_fake = torch.mean(F.relu(1 + fake_logits))
                     d_loss_real = torch.mean(F.relu(1 - real_logits))
                     d_loss = disc_factor * 0.5 * (d_loss_fake + d_loss_real)
-                    self.opt_disc.zero_grad(set_to_none=True)
+                    self.opt_disc.zero_grad()
                     d_loss.backward()
                     self.opt_disc.step()
 
@@ -187,10 +171,12 @@ class Trainer:
 
                     if i % self.log_every == 0:
                         with torch.no_grad():
+                            batch = batch.detach().cpu()
+                            rec = rec.detach().cpu()
                             real_fake_images = torch.cat([batch[:3].add(1).mul(0.5), rec[:3].add(1).mul(0.5)], dim=2)
                             
                             logs = {name: meter.compute().item() for name, meter in self.running_meters.items()}
-                            logs["train/img"] = real_fake_images.detach().cpu()
+                            logs["train/img"] = real_fake_images
                             
                             self.logger.log(logs, global_step)
                             
