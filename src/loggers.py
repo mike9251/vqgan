@@ -3,7 +3,7 @@ import torchvision
 import torch
 
 class TensorboardLogger:
-    def __init__(self, log_dir: str = ""):
+    def __init__(self, log_dir: str = "logs"):
         self.writer = SummaryWriter(log_dir)
     
     def log(self, logs: dict, global_step: int):

@@ -8,6 +8,11 @@ from tqdm import tqdm
 import numpy as np
 import os
 
+from pathlib import Path
+
+import hydra
+from omegaconf import DictConfig
+
 from dataloader import get_dataloader
 from discriminator import NLayerDiscriminator
 from lpips import LPIPS
@@ -42,14 +47,16 @@ set_seed(3910574)
 
 
 class Trainer:
-    def __init__(self, config):
+    def __init__(self, config: DictConfig):
         self.prep_train_dir()
 
-        self.device = torch.device(config["device"])
+        self.device = torch.device(config.device)
 
         self.logger = None
 
         self.log_every = config["log_every"]
+
+        self.output_dir = Path(config.output_dir)
 
         self.last_epoch = -1
 
@@ -59,21 +66,21 @@ class Trainer:
         self.disc = NLayerDiscriminator().to(self.device)
         self.disc.apply(init_weights)
         
-        self.opt_vqgan = torch.optim.Adam(self.vqgan.parameters(),  lr=config["lr"], betas=(config["beta1"], config["beta2"]))
-        self.opt_disc = torch.optim.Adam(self.disc.parameters(), lr=config["lr"], betas=(config["beta1"], config["beta2"]))
+        self.opt_vqgan = torch.optim.Adam(self.vqgan.parameters(),  lr=config.lr, betas=(config.beta1, config.beta2))
+        self.opt_disc = torch.optim.Adam(self.disc.parameters(), lr=config.lr, betas=(config.beta1, config.beta2))
 
-        if config["resume_from"]:
-            self._load_state(config["resume_from"])
+        if config.resume_from is not None:
+            self._load_state(config.resume_from)
 
         self.perceptual_loss = LPIPS().eval().to(self.device)
 
 
-        self.train_dataloader = get_dataloader(config["data_path"], config["img_size"], config["batch_size"], config["num_workers"], config["ddp"])
-        self.epochs = config["epochs"]
-        self.disc_factor = config["disc_factor"]
+        self.train_dataloader = get_dataloader(config.data_path, config.img_size, config.batch_size, config.num_workers, config.ddp)
+        self.epochs = config.epochs
+        self.disc_factor = config.disc_factor
         self.disc_start = config["disc_start"]
-        self.perc_loss_factor = config["perc_loss_factor"]
-        self.rec_loss_factor = config["rec_loss_factor"]
+        self.perc_loss_factor = config.perc_loss_factor
+        self.rec_loss_factor = config.rec_loss_factor
         
         track = ["train/running/perceptual_loss", "train/running/rec_loss", "train/running/disc_factor",
                 "train/running/lambda", "train/running/g_loss", "train/running/vq_loss", "train/running/d_loss",
@@ -95,6 +102,23 @@ class Trainer:
             self.opt_disc.load_state_dict(ckpt["disc_opt"])
 
         logging.info(f"Resume training from {ckpt_path} from last epoch {self.last_epoch}")
+    
+    def _save_checkpoint(self, epoch):
+
+        os.makedirs(self.output_dir / "checkpoints", exist_ok=True)
+
+        self.vqgan.cpu()
+        self.disc.cpu()
+        
+        torch.save({"vqgan": self.vqgan.state_dict(),
+                    "disc": self.disc.state_dict(),
+                    "vqgan_opt": self.opt_vqgan.state_dict(),
+                    "disc_opt": self.opt_disc.state_dict(),
+                    "epoch": epoch},
+                    os.path.join(self.output_dir / "checkpoints", f"vqgan_disc_epoch_{epoch}.pt"))
+
+        self.vqgan = self.vqgan.to(self.device)
+        self.disc = self.disc.to(self.device)
 
         
     @staticmethod
@@ -182,66 +206,85 @@ class Trainer:
 
                 logs = {name: meter.compute().item() for name, meter in self.epoch_meters.items()}
                 self.logger.log(logs, global_step)
-                
-                torch.save({"vqgan": self.vqgan.state_dict(),
-                            "disc": self.disc.state_dict(),
-                            "vqgan_opt": self.opt_vqgan.state_dict(),
-                            "disc_opt": self.opt_disc.state_dict(),
-                            "epoch": epoch},
-                            os.path.join("checkpoints", f"vqgan_disc_epoch_{epoch}.pt"))
+
+                self._save_checkpoint(epoch)
 
                 self.last_epoch += 1
 
 
+@hydra.main(config_path="../configs/", config_name="vqgan_celeba.yaml")
+def main(config: DictConfig):
+    print(config.root_dir, config.work_dir, config.output_dir, config.log_dir)
+    trainer = Trainer(config)
+    trainer.train()
+
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="VQGAN")
-    parser.add_argument('--latent-dim', type=int, default=256, help='Latent dimension n_z (default: 256)')
-    parser.add_argument('--img-size', type=int, default=256, help='Image height and width (default: 256)')
-    parser.add_argument('--num-codebook-vectors', type=int, default=1024, help='Number of codebook vectors (default: 256)')
-    parser.add_argument('--beta', type=float, default=0.25, help='Commitment loss scalar (default: 0.25)')
-    parser.add_argument('--img-channels', type=int, default=3, help='Number of channels of images (default: 3)')
-    parser.add_argument('--data-path', type=str, default='/data', help='Path to data (default: /data)')
-    parser.add_argument('--device', type=str, default="mps", help='Which device the training is on')
-    parser.add_argument('--batch-size', type=int, default=3, help='Input batch size for training (default: 6)')
-    parser.add_argument('--num-workers', type=int, default=0, help='Num threads to load data in background(default: 0)')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs to train (default: 50)')
-    parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate (default: 0.0002)')
-    parser.add_argument('--beta1', type=float, default=0.5, help='Adam beta param (default: 0.0)')
-    parser.add_argument('--beta2', type=float, default=0.9, help='Adam beta param (default: 0.999)')
-    parser.add_argument('--disc-start', type=int, default=10000, help='When to start the discriminator (default: 0)')
-    parser.add_argument('--disc-factor', type=float, default=0.1, help='')
-    parser.add_argument('--rec-loss-factor', type=float, default=1., help='Weighting factor for reconstruction loss.')
-    parser.add_argument('--perc-loss-factor', type=float, default=1., help='Weighting factor for perceptual loss.')
-    parser.add_argument('--ddp', type=bool, default=False, help='DDP training or not')
-    parser.add_argument('--resume-from', type=str, default="", help='Path to the checkpoint to resume training from')
-    parser.add_argument('--log-every', type=int, default=100, help='Number of train steps before a logging step')
+    main()
+    # parser = argparse.ArgumentParser(description="VQGAN")
+    # parser.add_argument('--latent-dim', type=int, default=256, help='Latent dimension n_z (default: 256)')
+    # parser.add_argument('--img-size', type=int, default=256, help='Image height and width (default: 256)')
+    # parser.add_argument('--num-codebook-vectors', type=int, default=1024, help='Number of codebook vectors (default: 256)')
+    # parser.add_argument('--beta', type=float, default=0.25, help='Commitment loss scalar (default: 0.25)')
+    # parser.add_argument('--img-channels', type=int, default=3, help='Number of channels of images (default: 3)')
+    # parser.add_argument('--data-path', type=str, default='/data', help='Path to data (default: /data)')
+    # parser.add_argument('--device', type=str, default="mps", help='Which device the training is on')
+    # parser.add_argument('--batch-size', type=int, default=3, help='Input batch size for training (default: 6)')
+    # parser.add_argument('--num-workers', type=int, default=0, help='Num threads to load data in background(default: 0)')
+    # parser.add_argument('--epochs', type=int, default=100, help='Number of epochs to train (default: 50)')
+    # parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate (default: 0.0002)')
+    # parser.add_argument('--beta1', type=float, default=0.5, help='Adam beta param (default: 0.0)')
+    # parser.add_argument('--beta2', type=float, default=0.9, help='Adam beta param (default: 0.999)')
+    # parser.add_argument('--disc-start', type=int, default=10000, help='When to start the discriminator (default: 0)')
+    # parser.add_argument('--disc-factor', type=float, default=0.1, help='')
+    # parser.add_argument('--rec-loss-factor', type=float, default=1., help='Weighting factor for reconstruction loss.')
+    # parser.add_argument('--perc-loss-factor', type=float, default=1., help='Weighting factor for perceptual loss.')
+    # parser.add_argument('--ddp', type=bool, default=False, help='DDP training or not')
+    # parser.add_argument('--resume-from', type=str, default="", help='Path to the checkpoint to resume training from')
+    # parser.add_argument('--log-every', type=int, default=100, help='Number of train steps before a logging step')
 
-    args = parser.parse_args()
-    # args.data_path = "/Users/petrushkovm/Downloads/celeba_hq_256"
+    # args = parser.parse_args()
+    # # args.data_path = "/Users/petrushkovm/Downloads/celeba_hq_256"
 
 
-    # Start a new wandb run to track this script.
-    # logger = wandb.init(
-    #     # Set the wandb entity where your project will be logged (generally your team name).
-    #     entity="soapbox92",
-    #     # Set the wandb project where this run will be logged.
-    #     project="VQGAN_Celeba",
-    #     # Track hyperparameters and run metadata.
-    #     config={
-    #         "learning_rate": args.lr,
-    #     "epochs": args.epochs,
-    #     "batch_size": args.batch_size,
-    #     },
-    # )
+    # # Start a new wandb run to track this script.
+    # # logger = wandb.init(
+    # #     # Set the wandb entity where your project will be logged (generally your team name).
+    # #     entity="soapbox92",
+    # #     # Set the wandb project where this run will be logged.
+    # #     project="VQGAN_Celeba",
+    # #     # Track hyperparameters and run metadata.
+    # #     config={
+    # #         "learning_rate": args.lr,
+    # #     "epochs": args.epochs,
+    # #     "batch_size": args.batch_size,
+    # #     },
+    # # )
     
-    trainer = Trainer(vars(args))
+    # trainer = Trainer(vars(args))
 
-    # trainer.logger = logger
+    # # trainer.logger = logger
 
-    trainer.train()
+    # trainer.train()
 
     # logger.finish()
 
     # add color logging
     # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
+
+
+    """
+    If d_loss stays ~ desc_factor and g_loss too (or gradually increases) it's a good sign. It means that D slowly learns to distinguish
+    real images from fake, it gives lower score to fake images and slightly higher score to real images (keeping their sum approximately
+    the same). At the same G catches up.
+
+    15 epochs and I can already cherry-pick some good results!!!
+
+
+    batch_size = 14
+    lr = 0.000021
+    desc_factor = 0.8
+    desc_start = 2500 (after 1 epoch)
+
+    python src/train_vqgan.py --batch-size=14 --num-workers=8 --device=cuda --data-path=/workspace/data/celeba_hq_256 --lr=0.000021 --disc-start=2150  --disc-factor=0.8 --num-codebook-vectors=1024 --resume-from=checkpoints/vqgan_disc_epoch_19.pt
+    """

@@ -1,0 +1,40 @@
+task_name: "VQGAN_Celeba_256"
+
+data_path: "/Users/petrushkovm/Downloads/celeba_hq_256"
+img_size: 256
+batch_size: 14
+num_workers: 8
+
+lr: 0.000021
+beta1: 0.5
+beta2: 0.9
+
+disc_start: 2150
+disc_factor: 0.8
+rec_loss_factor: 1.0
+perc_loss_factor: 1.0
+
+epochs: 100
+resume_from: null
+log_every: 100
+
+device: "cuda"
+ddp: False
+
+num_codebook_vectors: 1024
+latent_dim: 256
+beta: 0.25
+
+
+# Paths configuration
+root_dir: ${hydra.run.dir}
+data_dir: ${root_dir}/data/
+log_dir: ${root_dir}/logs/
+output_dir: ${hydra:runtime.output_dir} # this dir is formed below
+work_dir: ${hydra:runtime.cwd}
+
+hydra:
+  # Output directory for logs, checkpoints, etc.
+  run:
+    dir: ${log_dir}/${task_name}/runs/${now:%Y-%m-%d}_${now:%H-%M-%S}
+
