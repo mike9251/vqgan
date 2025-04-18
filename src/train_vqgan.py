@@ -238,5 +238,5 @@ if __name__ == '__main__':
     desc_factor = 0.8
     desc_start = 2500 (after 1 epoch)
 
-    python src/train_vqgan.py --batch-size=14 --num-workers=8 --device=cuda --data-path=/workspace/data/celeba_hq_256 --lr=0.000021 --disc-start=2150  --disc-factor=0.8 --num-codebook-vectors=1024 --resume-from=checkpoints/vqgan_disc_epoch_19.pt
+    python src/train_vqgan.py data_path=/workspace/data/celeba_hq_256 resume_from=checkpoints/vqgan_disc_epoch_19.pt root_dir=/workspace/code/vqgan-main
     """
