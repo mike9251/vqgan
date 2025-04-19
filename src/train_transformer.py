@@ -149,7 +149,8 @@ class Trainer:
             if self.ddp:
                 self.train_dataloader.sampler.set_epoch(epoch)
 
-            pbar = tqdm(range(steps_per_epoch))
+            if self.rank == 0:
+                pbar = tqdm(range(steps_per_epoch))
             # with tqdm(range(steps_per_epoch)) as pbar:
             for i, batch in zip(pbar, self.train_dataloader):
                 global_step = epoch * steps_per_epoch + i
