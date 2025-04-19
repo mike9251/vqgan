@@ -58,6 +58,8 @@ class Trainer:
         
         self.device_id = config.get('device_id', 0)
         self.rank = config.get('rank', 0)
+        self.ddp = config.ddp
+        self.config = config
 
         if self.rank == 0:
             self.logger = TensorboardLogger()
@@ -111,7 +113,7 @@ class Trainer:
             {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
         ]
 
-        self.opt = torch.optim.AdamW(optim_groups, lr=self.config.lr, betas=(self.config.beta1, self.config.lr.beta2)) #betas=(0.9, 0.95))
+        self.opt = torch.optim.AdamW(optim_groups, lr=self.config.lr, betas=(self.config.beta1, self.config.beta2)) #betas=(0.9, 0.95))
 
     def _load_state(self, ckpt_path: str):
         ckpt = torch.load(ckpt_path, map_location='cpu')
@@ -147,18 +149,21 @@ class Trainer:
             if self.ddp:
                 self.train_dataloader.sampler.set_epoch(epoch)
 
-            with tqdm(range(steps_per_epoch)) as pbar:
-                for i, batch in zip(pbar, self.train_dataloader):
-                    global_step = epoch * steps_per_epoch + i
+            pbar = tqdm(range(steps_per_epoch))
+            # with tqdm(range(steps_per_epoch)) as pbar:
+            for i, batch in zip(pbar, self.train_dataloader):
+                global_step = epoch * steps_per_epoch + i
 
-                    batch = batch.to(self.device)
+                batch = batch.to(self.device)
 
-                    logits, targets = self.vqgan_transformer(batch)
-                    loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1))
-                    self.opt.zero_grad()
-                    loss.backward()
-                    self.opt.step()
+                logits, targets = self.vqgan_transformer(batch)
+                loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1))
+                self.opt.zero_grad()
+                loss.backward()
+                self.opt.step()
 
+                if self.rank == 0:
+                    # probably better to accumulate metrics from all gpus
                     self.running_meters["train/running/ce_loss"].update(loss.detach().cpu())     
                     self.epoch_meters["train/epoch/ce_loss"].update(loss.detach().cpu())
 
@@ -181,12 +186,13 @@ class Trainer:
                     )
                     pbar.update(0)
 
+            if self.rank == 0:
                 logs = {name: meter.compute().item() for name, meter in self.epoch_meters.items()}
                 self.logger.log(logs, global_step)
 
                 self._save_checkpoint(epoch)
 
-                self.last_epoch += 1
+            self.last_epoch += 1
 
 
 @hydra.main(config_path="../configs/", config_name="vqgan_transformer_celeba.yaml")
