@@ -5,6 +5,9 @@ resume_from: null
 log_every: 100
 device: "cuda"
 ddp: False
+lr: 2.1e-5
+beta1: 0.9
+beta2: 0.95
 
 # data
 data_path: "/Users/petrushkovm/Downloads/celeba_hq_256"
