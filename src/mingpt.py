@@ -40,14 +40,14 @@ class CausalSelfAttention(nn.Module):
         
         att = (q @ k.transpose(-2, -1)) * (k.shape[-1]**-0.5)
         if layer_past is None:
-            arr = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
+            att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
         
         att = F.softmax(att, dim=-1)
         att = self.attn_drop(att)
         y = att @ v # B, n_heads, T, head_size
         y = y.transpose(1, 2).contiguous().view(B, T, C)
 
-        y = self.resid_drop(self.proj(x))
+        y = self.resid_drop(self.proj(y))
         return y, present
 
 
