@@ -64,6 +64,10 @@ class Trainer:
         self.vqgan = VQGAN(config).to(self.device)
         self.disc = NLayerDiscriminator().to(self.device)
         self.disc.apply(init_weights)
+
+        if config.ddp:
+            self.vqgan = DDP(self.vqgan, device_ids=[self.device_id], find_unused_parameters=False)
+            self.disc = DDP(self.disc, device_ids=[self.device_id], find_unused_parameters=False)
         
         self.opt_vqgan = torch.optim.Adam(self.vqgan.parameters(),  lr=config.lr, betas=(config.beta1, config.beta2))
         self.opt_disc = torch.optim.Adam(self.disc.parameters(), lr=config.lr, betas=(config.beta1, config.beta2))
@@ -88,11 +92,16 @@ class Trainer:
         self.running_meters = {t: RunningMeter(window_size=self.log_every, ddp=self.ddp) for t in track if "running" in t}
         self.epoch_meters = {t: RunningMeter(window_size=len(self.train_dataloader), ddp=self.ddp) for t in track if "epoch" in t}
     
+    def _unwrap(self, model):
+        if self.ddp:
+            return model.module
+        return model
+    
     def _load_state(self, ckpt_path: str):
         ckpt = torch.load(ckpt_path, map_location='cpu')
         self.last_epoch = ckpt["epoch"] if "epoch" in ckpt else 0
-        self.vqgan.load_state_dict(ckpt["vqgan"])
-        self.disc.load_state_dict(ckpt["disc"])
+        self._unwrap(self.vqgan).load_state_dict(ckpt["vqgan"])
+        self._unwrap(self.disc).load_state_dict(ckpt["disc"])
 
         if "vqgan_opt" in ckpt:
             self.opt_vqgan.load_state_dict(ckpt["vqgan_opt"])
@@ -107,8 +116,8 @@ class Trainer:
         
         os.makedirs(self.output_dir / "checkpoints", exist_ok=True)
 
-        torch.save({"vqgan": self.vqgan.state_dict(),
-                    "disc": self.disc.state_dict(),
+        torch.save({"vqgan": self._unwrap(self.vqgan).state_dict(),
+                    "disc": self._unwrap(self.disc).state_dict(),
                     "vqgan_opt": self.opt_vqgan.state_dict(),
                     "disc_opt": self.opt_disc.state_dict(),
                     "epoch": epoch},
@@ -118,6 +127,9 @@ class Trainer:
         steps_per_epoch = len(self.train_dataloader)
         start_epoch = self.last_epoch + 1
         for epoch in range(start_epoch, self.epochs):
+            if self.ddp:
+                self.train_dataloader.sampler.set_epoch(epoch)
+                
             with tqdm(range(steps_per_epoch), disable=not self.rank == 0) as pbar:
                 for i, batch in enumerate(self.train_dataloader):
                     batch = batch.to(self.device)
