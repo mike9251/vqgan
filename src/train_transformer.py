@@ -1,29 +1,23 @@
+import hydra
+import logging
+import numpy as np
+from omegaconf import DictConfig
+import os
+from pathlib import Path
+import random
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torchvision import utils as tv_utils
-from torchmetrics.aggregation import RunningMean
-
-from tqdm import tqdm
-import numpy as np
-import os
-
-from pathlib import Path
-
-import hydra
-from omegaconf import DictConfig, OmegaConf, open_dict
 
 from dataloader import get_dataloader
+from loggers import TensorboardLogger
+from meters import RunningMeter
 from transformer import VQGANTransformer
 
-from loggers import TensorboardLogger
-import logging
 logging.basicConfig(filename=None, encoding='utf-8', level=logging.DEBUG)
-
-
-import random
 
 
 def set_seed(seed: int = 42) -> None:
@@ -40,9 +34,6 @@ def set_seed(seed: int = 42) -> None:
     # Set a fixed value for the hash seed
     os.environ["PYTHONHASHSEED"] = str(seed)
     logging.info(f"Random seed set as {seed}")
-
-
-set_seed(3910574)
 
 
 class Trainer:
@@ -68,7 +59,7 @@ class Trainer:
         self.vqgan_transformer = VQGANTransformer(config).to(self.device)
 
         if config.ddp:
-            self.vqgan_transformer = DDP(self.vqgan_transformer, device_ids=[self.device_id])
+            self.vqgan_transformer = DDP(self.vqgan_transformer, device_ids=[self.device_id], find_unused_parameters=True)
         
         self.opt = None
         self._set_optimizer()
@@ -81,16 +72,15 @@ class Trainer:
         
         track = ["train/running/ce_loss", "train/epoch/ce_loss"]
         
-        self.running_meters = {t: RunningMean(window=self.log_every) for t in track if "running" in t}
-        self.epoch_meters = {t: RunningMean(window=len(self.train_dataloader)) for t in track if "epoch" in t}
+        self.running_meters = {t: RunningMeter(window_size=self.log_every, ddp=self.ddp) for t in track if "running" in t}
+        self.epoch_meters = {t: RunningMeter(window_size=len(self.train_dataloader), ddp=self.ddp) for t in track if "epoch" in t}
     
     def _set_optimizer(self):
         decay, no_decay = set(), set()
         whitelist_weight_modules = (nn.Linear, )
         blacklist_weight_modules = (nn.LayerNorm, nn.Embedding)
 
-        named_modules = self.vqgan_transformer.transformer.named_modules() if not self.ddp else self.vqgan_transformer.module.transformer.named_modules()
-        for mn, m in named_modules:
+        for mn, m in self._unwrap().transformer.named_modules():
             for pn, p in m.named_parameters():
                 fpn = f"{mn}.{pn}" if mn else pn
 
@@ -105,7 +95,7 @@ class Trainer:
 
         no_decay.add("pos_embed")
         
-        named_parameters = self.vqgan_transformer.transformer.named_parameters() if not self.ddp else self.vqgan_transformer.module.transformer.named_parameters()
+        named_parameters = self._unwrap().transformer.named_parameters()
         param_dict = {pn: p for pn, p in named_parameters}
 
         optim_groups = [
@@ -115,19 +105,16 @@ class Trainer:
 
         self.opt = torch.optim.AdamW(optim_groups, lr=self.config.lr, betas=(self.config.beta1, self.config.beta2)) #betas=(0.9, 0.95))
 
+    def _unwrap(self):
+        if self.ddp:
+            return self.vqgan_transformer.module
+        return self.vqgan_transformer
+
     def _load_state(self, ckpt_path: str):
         ckpt = torch.load(ckpt_path, map_location='cpu')
         self.last_epoch = ckpt["epoch"] if "epoch" in ckpt else 0
-        # won't work when a checkpoint was obtained wo DDP
-        self.vqgan_transformer.transformer.load_state_dict(ckpt["transformer"])
 
-        # model_dict = OrderedDict()
-        # pattern = re.compile('module.')
-        # for k,v in state_dict.items():
-        #     if re.search("module", k):
-        #         model_dict[re.sub(pattern, '', k)] = v
-        #     else:
-        #         model_dict = state_dict
+        self._unwrap().transformer.load_state_dict(ckpt["transformer"])
 
         if "opt" in ckpt:
             self.opt.load_state_dict(ckpt["opt"])
@@ -135,8 +122,12 @@ class Trainer:
         logging.info(f"Resume training from {ckpt_path} from last epoch {self.last_epoch}")
     
     def _save_checkpoint(self, epoch):
+        if not self.rank == 0:
+            return
+        
         os.makedirs(self.output_dir / "checkpoints", exist_ok=True)
-        torch.save({"transformer": self.vqgan_transformer.transformer.state_dict(),
+
+        torch.save({"transformer": self._unwrap().transformer.state_dict(),
                     "opt": self.opt.state_dict(),
                     "epoch": epoch},
                     os.path.join(self.output_dir / "checkpoints", f"vqgan_transformer_epoch_{epoch}.pt"))
@@ -149,56 +140,60 @@ class Trainer:
             if self.ddp:
                 self.train_dataloader.sampler.set_epoch(epoch)
 
-            if self.rank == 0:
-                pbar = tqdm(range(steps_per_epoch))
-            # with tqdm(range(steps_per_epoch)) as pbar:
-            for i, batch in zip(pbar, self.train_dataloader):
-                global_step = epoch * steps_per_epoch + i
+            with tqdm(range(steps_per_epoch), disable=not self.rank == 0) as pbar:
+                for i, batch in enumerate(self.train_dataloader):
+                    global_step = epoch * steps_per_epoch + i
 
-                batch = batch.to(self.device)
+                    batch = batch.to(self.device)
 
-                logits, targets = self.vqgan_transformer(batch)
-                loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1))
-                self.opt.zero_grad()
-                loss.backward()
-                self.opt.step()
+                    logits, targets = self.vqgan_transformer(batch)
+                    loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1))
+                    self.opt.zero_grad()
+                    loss.backward()
+                    self.opt.step()
+                    
+                    for n, p in self._unwrap().transformer.named_parameters():
+                        if p.grad is None:
+                            print(n)
+                        else:
+                            m = self.running_meters.get(f"grad/{n}", RunningMeter(window_size=self.log_every, ddp=self.ddp))
+                            m.update(p.grad.data.norm(2).cpu().item())
+                            self.running_meters[f"grad/{n}"] = m
 
-                if self.rank == 0:
-                    # probably better to accumulate metrics from all gpus
-                    self.running_meters["train/running/ce_loss"].update(loss.detach().cpu())     
-                    self.epoch_meters["train/epoch/ce_loss"].update(loss.detach().cpu())
+                    self.running_meters["train/running/ce_loss"].update(loss.detach().cpu().item())     
+                    self.epoch_meters["train/epoch/ce_loss"].update(loss.detach().cpu().item())
 
-                    if i % self.log_every == 0:
+                    if i % (self.log_every + 1) == 0:
                         with torch.no_grad():
-                            img, rec, halh_sample, full_sample = self.vqgan_transformer.log_imgs(batch[0:1, ...])
+                            img, rec, halh_sample, full_sample = self._unwrap().log_imgs(batch[0:1, ...])
                             img_log = torch.cat((img, rec, halh_sample, full_sample), dim=-1)
                             img_log = img_log.add(1).mul(0.5).detach().cpu()
                             
-                            logs = {name: meter.compute().item() for name, meter in self.running_meters.items()}
+                            logs = {name: meter.compute() for name, meter in self.running_meters.items()}
                             logs["train/img"] = img_log
                             
-                            self.logger.log(logs, global_step)
-                            
-                            # tv_utils.save_image(real_fake_images, os.path.join("results", f"{epoch}_{i}.jpg"), nrow=3)
+                            if self.rank == 0:
+                                self.logger.log(logs, global_step)
 
                     pbar.set_postfix(
                         EPOCH=epoch,
-                        LOSS=np.round(self.running_meters["train/running/ce_loss"].compute().item(), 5)
+                        LOSS=np.round(self.running_meters["train/running/ce_loss"].compute(), 5)
                     )
-                    pbar.update(0)
+                    pbar.update(1)
 
-            if self.rank == 0:
-                logs = {name: meter.compute().item() for name, meter in self.epoch_meters.items()}
-                self.logger.log(logs, global_step)
+                logs = {name: meter.compute() for name, meter in self.epoch_meters.items()}
+                
+                if self.rank == 0:
+                    self.logger.log(logs, global_step)
 
-                self._save_checkpoint(epoch)
+                    self._save_checkpoint(epoch)
 
-            self.last_epoch += 1
+                self.last_epoch += 1
 
 
 @hydra.main(config_path="../configs/", config_name="vqgan_transformer_celeba.yaml")
 def main(config: DictConfig):
-    print(config.root_dir, config.work_dir, config.output_dir, config.log_dir)
+    set_seed(3910574)
 
     if config.ddp:
         logging.info(f"Setting up DDP!")
