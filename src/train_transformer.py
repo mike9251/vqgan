@@ -196,7 +196,7 @@ class Trainer:
                 self.last_epoch += 1
 
 
-@hydra.main(config_path="../configs/", config_name="vqgan_transformer_celeba.yaml")
+@hydra.main(config_path="../configs/", config_name="vqgan_transformer_celeba.yaml", version_base="1.3")
 def main(config: DictConfig):
     set_seed(3910574)
 
