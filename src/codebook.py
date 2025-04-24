@@ -13,8 +13,8 @@ class Codebook(nn.Module):
         self.embedding.weight.data.uniform_(-1.0 / self.num_vectors, 1.0 / self.num_vectors)
 
     def forward(self, z):
-        z = z.permute(0, 2, 3, 1).contiguous() # num channels == latent_dim
-        z_flat = z.view(-1, self.latent_dim) # bhw, latent_dim
+        z = z.permute(0, 2, 3, 1) # num channels == latent_dim
+        z_flat = z.reshape(-1, self.latent_dim) # bhw, latent_dim
 
         # compute distances between all z_flat and every vector in embeding
         # this is just an expanded formula for (a - b)**2 = a**2 + b**2 - 2ab

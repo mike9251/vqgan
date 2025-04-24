@@ -1,7 +1,7 @@
 import hydra
 import logging
 import numpy as np
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf, open_dict
 import os
 from pathlib import Path
 import random
@@ -65,12 +65,20 @@ class Trainer:
         self.disc = NLayerDiscriminator().to(self.device)
         self.disc.apply(init_weights)
 
+        self.world_size = 1
+
         if config.ddp:
-            self.vqgan = DDP(self.vqgan, device_ids=[self.device_id], find_unused_parameters=False)
+            self.vqgan = DDP(self.vqgan, device_ids=[self.device_id], find_unused_parameters=True) # sparse codebook update
             self.disc = DDP(self.disc, device_ids=[self.device_id], find_unused_parameters=False)
+
+            self.world_size = dist.get_world_size()
         
-        self.opt_vqgan = torch.optim.Adam(self.vqgan.parameters(),  lr=config.lr, betas=(config.beta1, config.beta2))
-        self.opt_disc = torch.optim.Adam(self.disc.parameters(), lr=config.lr, betas=(config.beta1, config.beta2))
+            self.disc = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.disc)
+
+        logging.info(f"World size = {self.world_size}")
+
+        self.opt_vqgan = torch.optim.Adam(self._unwrap(self.vqgan).parameters(),  lr=config.lr, betas=(config.beta1, config.beta2))
+        self.opt_disc = torch.optim.Adam(self._unwrap(self.disc).parameters(), lr=config.lr, betas=(config.beta1, config.beta2))
 
         if config.resume_from is not None:
             self._load_state(config.resume_from)
@@ -90,7 +98,7 @@ class Trainer:
                 "train/epoch/lambda", "train/epoch/g_loss", "train/epoch/vq_loss", "train/epoch/d_loss"]
         
         self.running_meters = {t: RunningMeter(window_size=self.log_every, ddp=self.ddp) for t in track if "running" in t}
-        self.epoch_meters = {t: RunningMeter(window_size=len(self.train_dataloader), ddp=self.ddp) for t in track if "epoch" in t}
+        self.epoch_meters = {t: RunningMeter(window_size=len(self.train_dataloader) // self.world_size, ddp=self.ddp) for t in track if "epoch" in t}
     
     def _unwrap(self, model):
         if self.ddp:
@@ -129,13 +137,13 @@ class Trainer:
         for epoch in range(start_epoch, self.epochs):
             if self.ddp:
                 self.train_dataloader.sampler.set_epoch(epoch)
-                
+
             with tqdm(range(steps_per_epoch), disable=not self.rank == 0) as pbar:
                 for i, batch in enumerate(self.train_dataloader):
                     batch = batch.to(self.device)
 
                     global_step = epoch * steps_per_epoch + i
-
+                    
                     rec, _, q_loss = self.vqgan(batch)
 
                     # vqgan update
@@ -144,26 +152,27 @@ class Trainer:
                     rec_loss = torch.abs(batch - rec).mean()
                     
                     perc_rec_loss = self.perc_loss_factor * perceptual_loss + self.rec_loss_factor * rec_loss
-                    
-                    fake_logits = self.disc(rec)
-                    disc_factor = self.vqgan.adopt_disc_weight(self.disc_factor, global_step, self.disc_start)
-                    gen_loss = -torch.mean(fake_logits)
 
-                    lamb = self.vqgan.calculate_lambda(perc_rec_loss, gen_loss)
+                    fake_logits_gen = self.disc(rec)
+                    disc_factor = self._unwrap(self.vqgan).adopt_disc_weight(self.disc_factor, global_step, self.disc_start)
+                    gen_loss = -torch.mean(fake_logits_gen)
 
-                    vqgan_loss = perc_rec_loss + q_loss + disc_factor * lamb * gen_loss
+                    lamb = self._unwrap(self.vqgan).calculate_lambda(perc_rec_loss, gen_loss)
+
+                    vqgan_loss = perc_rec_loss + q_loss + disc_factor * gen_loss * lamb
 
                     self.opt_vqgan.zero_grad()
-                    vqgan_loss.backward(retain_graph=True)
+                    vqgan_loss.backward()
                     self.opt_vqgan.step()
 
                     # disc update
                     fake_logits = self.disc(rec.detach())
                     real_logits = self.disc(batch.detach())
 
-                    d_loss_fake = torch.mean(F.relu(1 + fake_logits))
-                    d_loss_real = torch.mean(F.relu(1 - real_logits))
-                    d_loss = disc_factor * 0.5 * (d_loss_fake + d_loss_real)
+                    d_loss_fake = torch.mean(F.relu(1.0 + fake_logits))
+                    d_loss_real = torch.mean(F.relu(1.0 - real_logits))
+                    d_loss = disc_factor * 0.5 * (d_loss_real + d_loss_fake)
+                    
                     self.opt_disc.zero_grad()
                     d_loss.backward()
                     self.opt_disc.step()
@@ -197,6 +206,7 @@ class Trainer:
                             
                             if self.rank == 0:
                                 self.logger.log(logs, global_step)
+                    
 
                     pbar.set_postfix(
                         EPOCH=epoch,

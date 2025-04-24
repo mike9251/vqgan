@@ -1,7 +1,7 @@
 import hydra
 import logging
 import numpy as np
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf, open_dict
 import os
 from pathlib import Path
 import random
@@ -46,11 +46,14 @@ class Trainer:
         self.output_dir = Path(config.output_dir)
 
         self.last_epoch = -1
+
+        self.log_grads = config.log_grads
         
         self.device_id = config.get('device_id', 0)
         self.rank = config.get('rank', 0)
         self.ddp = config.ddp
         self.config = config
+        self.world_size = 1
 
         if self.rank == 0:
             self.logger = TensorboardLogger()
@@ -60,6 +63,7 @@ class Trainer:
 
         if config.ddp:
             self.vqgan_transformer = DDP(self.vqgan_transformer, device_ids=[self.device_id], find_unused_parameters=True)
+            self.world_size = dist.get_world_size()
         
         self.opt = None
         self._set_optimizer()
@@ -73,7 +77,7 @@ class Trainer:
         track = ["train/running/ce_loss", "train/epoch/ce_loss"]
         
         self.running_meters = {t: RunningMeter(window_size=self.log_every, ddp=self.ddp) for t in track if "running" in t}
-        self.epoch_meters = {t: RunningMeter(window_size=len(self.train_dataloader), ddp=self.ddp) for t in track if "epoch" in t}
+        self.epoch_meters = {t: RunningMeter(window_size=len(self.train_dataloader) // self.world_size, ddp=self.ddp) for t in track if "epoch" in t}
     
     def _set_optimizer(self):
         decay, no_decay = set(), set()
@@ -103,7 +107,7 @@ class Trainer:
             {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
         ]
 
-        self.opt = torch.optim.AdamW(optim_groups, lr=self.config.lr, betas=(self.config.beta1, self.config.beta2)) #betas=(0.9, 0.95))
+        self.opt = torch.optim.AdamW(optim_groups, lr=self.config.lr, betas=(self.config.beta1, self.config.beta2))
 
     def _unwrap(self):
         if self.ddp:
@@ -152,13 +156,14 @@ class Trainer:
                     loss.backward()
                     self.opt.step()
                     
-                    for n, p in self._unwrap().transformer.named_parameters():
-                        if p.grad is None:
-                            print(n)
-                        else:
-                            m = self.running_meters.get(f"grad/{n}", RunningMeter(window_size=self.log_every, ddp=self.ddp))
-                            m.update(p.grad.data.norm(2).cpu().item())
-                            self.running_meters[f"grad/{n}"] = m
+                    if self.log_grads:
+                        for n, p in self._unwrap().transformer.named_parameters():
+                            if p.grad is None:
+                                print(n)
+                            else:
+                                m = self.running_meters.get(f"grad/{n}", RunningMeter(window_size=self.log_every, ddp=self.ddp))
+                                m.update(p.grad.data.norm(2).cpu().item())
+                                self.running_meters[f"grad/{n}"] = m
 
                     self.running_meters["train/running/ce_loss"].update(loss.detach().cpu().item())     
                     self.epoch_meters["train/epoch/ce_loss"].update(loss.detach().cpu().item())

@@ -126,13 +126,13 @@ class NonLocalBlock(nn.Module):
         att = att.permute(0, 2, 1)
         # print(f"v1={v.shape}, att1={att.shape}")
     
-        y =  v @ att # b, hw, c
+        out =  v @ att # b, hw, c
 
-        y = y.reshape(b, c, h, w)
+        out = out.reshape(b, c, h, w)
 
-        y = self.proj(y)
+        out = self.proj(out)
 
-        return x + y
+        return x + out
     
 
 
