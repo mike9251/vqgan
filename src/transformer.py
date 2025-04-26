@@ -21,11 +21,20 @@ class VQGANTransformer(nn.Module):
         self.transformer = GPT(config)
         
         self.pkeep = config.pkeep
+        self.device = config.device
+
+        if "transformer_weights" in config:
+            self._load_transformer_weights(config.transformer_weights)
 
     def _load_vqgan_weights(self, ckpt_path):
         ckpt = torch.load(ckpt_path, map_location="cpu")
         self.vqgan.load_state_dict(ckpt["vqgan"])
         logging.info(f"VQGAN loaded from {ckpt_path}")
+    
+    def _load_transformer_weights(self, ckpt_path):
+        ckpt = torch.load(ckpt_path, map_location="cpu")
+        self.transformer.load_state_dict(ckpt["transformer"])
+        logging.info(f"Transformer loaded from {ckpt_path}")
     
     @torch.no_grad()
     def encode_to_z(self, x):
@@ -114,6 +123,14 @@ class VQGANTransformer(nn.Module):
         img_rec = self.token_to_image(idx)
 
         return x, img_rec, img_half_sample, img_full_sample
+
+    @torch.no_grad()
+    def generate(self, steps = 256):
+        sos_token_idx = self.sos_token * torch.ones((1, 1), device=self.device).long()
+        
+        idx_full_sample = self.sample(None, sos_token_idx, steps)
+
+        return self.token_to_image(idx_full_sample, p1=int(steps**0.5), p2=int(steps**0.5))
 
 
 

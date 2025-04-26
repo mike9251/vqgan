@@ -1,0 +1,37 @@
+device: "cuda"
+output_dir: ./output
+num_images: 5
+img_size: 256
+random_seed: null
+
+# vqgan
+num_codebook_vectors: 1024
+latent_dim: 256
+beta: 0.25
+
+# transformer
+transformer_weights: /Users/petrushkovm/Projects/logs/VQGANTransformer_Celeba_256 2/runs/2025-04-24_20-28-58/checkpoints/vqgan_transformer_epoch_47.pt
+vqgan_weights: /Users/petrushkovm/Projects/logs/VQGAN_Celeba_256/vqgan_disc_epoch_52.pt
+sos_token: 0
+pkeep: 0.5
+vocab_size: 1024
+embed_dim: 1024
+block_size: 512
+n_layers: 24
+n_head: 16
+n_unmasked: 0
+embed_pdrop: 0.0
+resid_pdrop: 0.0
+attn_pdrop: 0.0
+
+defaults:
+  - _self_
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+hydra:
+  output_subdir: null
+  run:
+    dir: ${output_dir}
+
+

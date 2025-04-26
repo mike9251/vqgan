@@ -4,7 +4,6 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf, open_dict
 import os
 from pathlib import Path
-import random
 from tqdm import tqdm
 import torch
 import torch.nn.functional as F
@@ -16,25 +15,10 @@ from discriminator import NLayerDiscriminator
 from loggers import TensorboardLogger
 from lpips import LPIPS
 from meters import RunningMeter
+from utils import set_seed
 from vqgan import VQGAN
 
 logging.basicConfig(filename=None, encoding='utf-8', level=logging.DEBUG)
-
-
-def set_seed(seed: int = 42) -> None:
-    np.random.seed(seed)
-    random.seed(seed)
-    torch.manual_seed(seed)
-
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        # When running on the CuDNN backend, two further options must be set
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
-    # Set a fixed value for the hash seed
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    logging.info(f"Random seed set as {seed}")
 
 
 def get_item(x: torch.Tensor) -> float:
