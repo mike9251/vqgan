@@ -16,7 +16,6 @@ from discriminator import NLayerDiscriminator
 from loggers import TensorboardLogger
 from lpips import LPIPS
 from meters import RunningMeter
-from model_utils import init_weights
 from vqgan import VQGAN
 
 logging.basicConfig(filename=None, encoding='utf-8', level=logging.DEBUG)
@@ -63,7 +62,6 @@ class Trainer:
 
         self.vqgan = VQGAN(config).to(self.device)
         self.disc = NLayerDiscriminator().to(self.device)
-        self.disc.apply(init_weights)
 
         self.world_size = 1
 
@@ -73,7 +71,7 @@ class Trainer:
 
             self.world_size = dist.get_world_size()
         
-            self.disc = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.disc)
+        self.disc = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.disc)
 
         logging.info(f"World size = {self.world_size}")
 

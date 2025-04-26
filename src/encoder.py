@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from helper import ResidualBlock, NonLocalBlock, DownBlock, GroupNorm, Swish
+from blocks import ResidualBlock, NonLocalBlock, DownBlock, GroupNorm, Swish
 
 
 class Encoder(nn.Module):
@@ -40,7 +40,7 @@ class Encoder(nn.Module):
 
 if __name__ == "__main__":
     device = torch.device("mps") if torch.mps.is_available() else torch.device("cpu")
-    model = Encoder({"img_channels": 3, "latent_dim": 100})
+    model = Encoder({"latent_dim": 100})
     model = model.to(device)
 
     x = torch.rand((6, 3, 256, 256), device=device)

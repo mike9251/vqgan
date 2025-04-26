@@ -124,7 +124,6 @@ class NonLocalBlock(nn.Module):
         att = att * (c**-0.5)
         att = F.softmax(att, dim=-1)
         att = att.permute(0, 2, 1)
-        # print(f"v1={v.shape}, att1={att.shape}")
     
         out =  v @ att # b, hw, c
 

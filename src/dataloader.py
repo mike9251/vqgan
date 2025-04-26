@@ -5,8 +5,9 @@ from pathlib import Path
 import numpy as np
 import random
 
+
 class CelebaDataset(Dataset):
-    def __init__(self, path, img_size):
+    def __init__(self, path: str, img_size: int = 256):
         super().__init__()
 
         self.img_paths = list(Path(path).glob("*.jpg"))
@@ -30,7 +31,6 @@ class CelebaDataset(Dataset):
 
 def get_dataloader(data_dir, img_size, batch_size, num_workers=0, ddp=False):
     dataset = CelebaDataset(data_dir, img_size)
-    # print(f"Dataet::Num images={len(dataset)}")
     sampler = DistributedSampler(dataset) if ddp else None
 
     def seed_worker(worker_id):
@@ -50,8 +50,9 @@ def get_dataloader(data_dir, img_size, batch_size, num_workers=0, ddp=False):
                             generator=g)
     return dataloader
 
+
 if __name__ == "__main__":
-    dataset = CelebaDataset("/Users/petrushkovm/Downloads/celeba_hq_256", 256)
+    dataset = CelebaDataset("<path-to>/celeba_hq_256", 256)
     print(len(dataset))
 
     img = dataset[10]
@@ -67,7 +68,7 @@ if __name__ == "__main__":
     #         print(batch.shape, batch.dtype)
 
     
-    dataloader2 = get_dataloader("/Users/petrushkovm/Downloads/celeba_hq_256", img_size=256, batch_size=3, num_workers=0, ddp=False)
+    dataloader2 = get_dataloader("<path-to>/celeba_hq_256", img_size=256, batch_size=3, num_workers=0, ddp=False)
     print(f"Num batches = {len(dataloader2)}")
     for i, batch in enumerate(dataloader2):
         if i < 5:

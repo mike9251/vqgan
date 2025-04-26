@@ -44,7 +44,7 @@ class Codebook(nn.Module):
 if __name__ == "__main__":
     device = torch.device("mps")
 
-    codebook = Codebook({"num_vectors": 100, "latent_dim": 100, "beta": 0.5})
+    codebook = Codebook({"num_codebook_vectors": 100, "latent_dim": 100, "beta": 0.5})
     codebook = codebook.to(device)
 
     z = torch.rand((4, 100, 16, 16), device=device)

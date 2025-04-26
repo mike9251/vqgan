@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from helper import ResidualBlock, UpBlock, GroupNorm, Swish, NonLocalBlock
+from blocks import ResidualBlock, UpBlock, GroupNorm, Swish, NonLocalBlock
 
 
 class Decoder(nn.Module):
@@ -43,7 +43,7 @@ class Decoder(nn.Module):
 
 if __name__ == "__main__":
     device = torch.device("mps") if torch.mps.is_available() else torch.device("cpu")
-    model = Decoder({"latent_dim": 512, "img_channels": 3})
+    model = Decoder({"latent_dim": 512})
     model = model.to(device)
 
     x = torch.rand((6, 512, 16, 16), device=device)

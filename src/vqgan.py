@@ -55,7 +55,7 @@ class VQGAN(nn.Module):
 if __name__ == "__main__":
     device = torch.device("mps")
 
-    model = VQGAN({"img_channels": 3, "latent_dim": 128, "num_vectors": 100, "beta": 0.5})
+    model = VQGAN({"latent_dim": 128, "num_codebook_vectors": 100, "beta": 0.5})
     model = model.to(device)
 
     x = torch.rand((4, 3, 256, 256), device=device)

@@ -1,8 +1,5 @@
-import functools
 import torch.nn as nn
 import torch
-
-from model_utils import ActNorm
 
 
 def weights_init(m):
@@ -24,17 +21,8 @@ class NLayerDiscriminator(nn.Module):
             input_nc (int)  -- the number of channels in input images
             ndf (int)       -- the number of filters in the last conv layer
             n_layers (int)  -- the number of conv layers in the discriminator
-            norm_layer      -- normalization layer
         """
-        super(NLayerDiscriminator, self).__init__()
-        if not use_actnorm:
-            norm_layer = nn.BatchNorm2d
-        else:
-            norm_layer = ActNorm
-        if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
-            use_bias = norm_layer.func != nn.BatchNorm2d
-        else:
-            use_bias = norm_layer != nn.BatchNorm2d
+        super().__init__()
 
         kw = 4
         padw = 1
@@ -45,22 +33,24 @@ class NLayerDiscriminator(nn.Module):
             nf_mult_prev = nf_mult
             nf_mult = min(2 ** n, 8)
             sequence += [
-                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-                norm_layer(ndf * nf_mult),
+                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=False),
+                nn.BatchNorm2d(ndf * nf_mult),
                 nn.LeakyReLU(0.2, False)
             ]
 
         nf_mult_prev = nf_mult
         nf_mult = min(2 ** n_layers, 8)
         sequence += [
-            nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
-            norm_layer(ndf * nf_mult),
+            nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=False),
+            nn.BatchNorm2d(ndf * nf_mult),
             nn.LeakyReLU(0.2, False)
         ]
 
         sequence += [
             nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
         self.main = nn.Sequential(*sequence)
+
+        self.apply(weights_init)
 
     def forward(self, input):
         """Standard forward."""
