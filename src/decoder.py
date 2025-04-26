@@ -37,7 +37,7 @@ class Decoder(nn.Module):
 
         self.model = nn.Sequential(*layers)
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
 
 

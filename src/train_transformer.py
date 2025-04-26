@@ -227,4 +227,6 @@ if __name__ == '__main__':
     main()
 
     # add color logging
+    # bs = 64 
+    # lr = 1.4e-4
     # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from helper import ResidualBlock, NonLocalBlock, DownBlock, UpBlock, GroupNorm, Swish
+from helper import ResidualBlock, NonLocalBlock, DownBlock, GroupNorm, Swish
 
 
 class Encoder(nn.Module):
@@ -32,15 +32,11 @@ class Encoder(nn.Module):
         layers.append(GroupNorm(channels[-1]))
         layers.append(Swish())
         layers.append(nn.Conv2d(channels[-1], config["latent_dim"], 3, 1, 1))
-        # self.model = layers
         self.model = nn.Sequential(*layers)
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
-        # for block in self.model:
-        #     x = block(x)
-        #     print(x.shape)
-        # return x
+
 
 if __name__ == "__main__":
     device = torch.device("mps") if torch.mps.is_available() else torch.device("cpu")
