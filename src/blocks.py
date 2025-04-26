@@ -72,7 +72,6 @@ class NonLocalBlock(nn.Module):
 
         self.in_channels = channels
         self.gn = GroupNorm(channels)
-        # make it one Conv2d
         self.q = nn.Conv2d(channels, channels, 1, 1, 0)
         self.k = nn.Conv2d(channels, channels, 1, 1, 0)
         self.v = nn.Conv2d(channels, channels, 1, 1, 0)
@@ -81,33 +80,6 @@ class NonLocalBlock(nn.Module):
         
         self.proj = nn.Conv2d(channels, channels, 1, 1, 0)
     
-    def forward2(self, x):
-        h_ = x
-        h_ = self.gn(h_)
-        q = self.q(h_)
-        k = self.k(h_)
-        v = self.v(h_)
-
-        # compute attention
-        b,c,h,w = q.shape
-        q = q.reshape(b,c,h*w)
-        q = q.permute(0,2,1)   # b,hw,c
-        k = k.reshape(b,c,h*w) # b,c,hw
-        w_ = torch.bmm(q,k)     # b,hw,hw    w[b,i,j]=sum_c q[b,i,c]k[b,c,j]
-        w_ = w_ * (int(c)**(-0.5))
-        w_ = F.softmax(w_, dim=2)
-
-        # attend to values
-        v = v.reshape(b,c,h*w)
-        w_ = w_.permute(0,2,1)   # b,hw,hw (first hw of k, second of q)
-        h_ = torch.bmm(v,w_)     # b, c,hw (hw of q) h_[b,c,j] = sum_i v[b,c,i] w_[b,i,j]
-        h_ = h_.reshape(b,c,h,w)
-
-        h_ = self.proj(h_)
-
-        return x+h_
-    
-
     def forward(self, x):
         y = self.gn(x)
         q, k, v = self.q(y), self.k(y), self.v(y)

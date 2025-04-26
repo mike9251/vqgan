@@ -71,7 +71,7 @@ class Trainer:
 
             self.world_size = dist.get_world_size()
         
-        self.disc = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.disc)
+            self.disc = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.disc)
 
         logging.info(f"World size = {self.world_size}")
 
