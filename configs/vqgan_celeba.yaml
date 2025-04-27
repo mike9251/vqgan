@@ -1,6 +1,6 @@
 task_name: "VQGAN_Celeba_256"
 
-data_path: "/Users/petrushkovm/Downloads/celeba_hq_256"
+data_path: "<path-to>/celeba_hq_256"
 img_size: 256
 batch_size: 14
 num_workers: 8
