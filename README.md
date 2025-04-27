@@ -31,6 +31,8 @@ cd <repo-name>
 
 ## Install dependencies
 
+[Install pytorch](https://pytorch.org/)
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -78,7 +80,7 @@ python src/train_transformer.py data_path=<path-to-celeba-dataset> log_dir=<wher
 I trained this model for ~9 hours (47 epochs) using 2x Nvidia 4090 GPUs.
 
 ```bash
-torchrun --standalone --nnodes --nproc_per_node=2 src/train_transformer.py data_path=<path-to-celeba-dataset> log_dir=<where-to-store-logs> batch_size=64 num_workers=8 lr=1.4e-4 ddp=True
+torchrun --standalone --nnodes --nproc_per_node=2 src/train_transformer.py data_path=<path-to-celeba-dataset> log_dir=<where-to-store-logs> vqgan_weights=<path-to-vqgan-checkpoint-from-step-1> batch_size=64 num_workers=8 lr=1.4e-4 ddp=True
 ```
 
 ![alt text](img/image-4.png)
@@ -93,11 +95,11 @@ python scripts/generate_images.py
 
 This script samples new images by generating discrete codes with the Transformer and decoding them with the VQ-GAN decoder. See `configs/generate_images.yaml` for configuring the sampling process.
 
-Acknowledgments
+## Acknowledgments
 
 1. [Taming Transformers for High-Resolution Image Synthesis](https://arxiv.org/abs/2012.09841)
 2. [Video explanation](https://www.youtube.com/watch?v=wcqLFDXaDO8) | [Video implementation](https://www.youtube.com/watch?v=_Br5WRwUz_U)
 
-Notes
+## Notes
 
 This project is simplified for research/educational purposes and focuses only on the CelebA dataset.
