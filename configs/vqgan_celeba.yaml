@@ -27,14 +27,10 @@ beta: 0.25
 
 
 # Paths configuration
-root_dir: ${hydra.run.dir}
-data_dir: ${root_dir}/data/
-log_dir: ${root_dir}/logs/
+log_dir: ./logs
 output_dir: ${hydra:runtime.output_dir} # this dir is formed below
-work_dir: ${hydra:runtime.cwd}
 
 hydra:
   # Output directory for logs, checkpoints, etc.
   run:
     dir: ${log_dir}/${task_name}/runs/${now:%Y-%m-%d}_${now:%H-%M-%S}
-

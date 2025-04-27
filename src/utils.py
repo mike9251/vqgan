@@ -1,10 +1,12 @@
-import os, hashlib
-import requests
-from tqdm import tqdm
-import random
+import hashlib
 import logging
-import torch
+import os
+import random
+
 import numpy as np
+import requests
+import torch
+from tqdm import tqdm
 
 
 def set_seed(seed: int = 42) -> None:
@@ -23,17 +25,11 @@ def set_seed(seed: int = 42) -> None:
     logging.info(f"Random seed set as {seed}")
 
 
-URL_MAP = {
-    "vgg_lpips": "https://heibox.uni-heidelberg.de/f/607503859c864bc1b30b/?dl=1"
-}
+URL_MAP = {"vgg_lpips": "https://heibox.uni-heidelberg.de/f/607503859c864bc1b30b/?dl=1"}
 
-CKPT_MAP = {
-    "vgg_lpips": "vgg.pth"
-}
+CKPT_MAP = {"vgg_lpips": "vgg.pth"}
 
-MD5_MAP = {
-    "vgg_lpips": "d507d7349b931f0638a25a48a722f98a"
-}
+MD5_MAP = {"vgg_lpips": "d507d7349b931f0638a25a48a722f98a"}
 
 
 def download(url, local_path, chunk_size=1024):
@@ -58,7 +54,7 @@ def get_ckpt_path(name, root, check=False):
     assert name in URL_MAP
     path = os.path.join(root, CKPT_MAP[name])
     if not os.path.exists(path) or (check and not md5_hash(path) == MD5_MAP[name]):
-        print("Downloading {} model from {} to {}".format(name, URL_MAP[name], path))
+        print(f"Downloading {name} model from {URL_MAP[name]} to {path}")
         download(URL_MAP[name], path)
         md5 = md5_hash(path)
         assert md5 == MD5_MAP[name], md5
@@ -72,17 +68,15 @@ class KeyNotFoundError(Exception):
         self.visited = visited
         messages = list()
         if keys is not None:
-            messages.append("Key not found: {}".format(keys))
+            messages.append(f"Key not found: {keys}")
         if visited is not None:
-            messages.append("Visited: {}".format(visited))
-        messages.append("Cause:\n{}".format(cause))
+            messages.append(f"Visited: {visited}")
+        messages.append(f"Cause:\n{cause}")
         message = "\n".join(messages)
         super().__init__(message)
 
 
-def retrieve(
-    list_or_dict, key, splitval="/", default=None, expand=True, pass_success=False
-):
+def retrieve(list_or_dict, key, splitval="/", default=None, expand=True, pass_success=False):
     """Given a nested list or dict return the desired value at key expanding
     callable nodes if necessary and :attr:`expand` is ``True``. The expansion
     is done in-place.
@@ -125,9 +119,7 @@ def retrieve(
             if callable(list_or_dict):
                 if not expand:
                     raise KeyNotFoundError(
-                        ValueError(
-                            "Trying to get past callable node with expand=False."
-                        ),
+                        ValueError("Trying to get past callable node with expand=False."),
                         keys=keys,
                         visited=visited,
                     )
@@ -164,14 +156,16 @@ def retrieve(
 
 
 if __name__ == "__main__":
-    config = {"keya": "a",
-              "keyb": "b",
-              "keyc":
-                  {"cc1": 1,
-                   "cc2": 2,
-                   }
-              }
+    config = {
+        "keya": "a",
+        "keyb": "b",
+        "keyc": {
+            "cc1": 1,
+            "cc2": 2,
+        },
+    }
     from omegaconf import OmegaConf
+
     config = OmegaConf.create(config)
     print(config)
     retrieve(config, "keya")

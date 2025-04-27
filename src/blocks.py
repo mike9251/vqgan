@@ -10,7 +10,7 @@ class GroupNorm(nn.Module):
 
     def forward(self, x):
         return self.gn(x)
-    
+
 
 class Swish(nn.Module):
     def forward(self, x):
@@ -36,19 +36,18 @@ class ResidualBlock(nn.Module):
         if in_channels != out_channels:
             self.channel_up = nn.Conv2d(in_channels, out_channels, 1, 1, 0)
 
-    
     def forward(self, x):
         if self.in_channels != self.out_channels:
             return self.block(x) + self.channel_up(x)
 
         return x + self.block(x)
-    
+
 
 class UpBlock(nn.Module):
     def __init__(self, channels):
         super().__init__()
         self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
-    
+
     def forward(self, x):
         x = F.interpolate(x, scale_factor=2.0, mode="nearest")
         return self.conv(x)
@@ -59,7 +58,7 @@ class DownBlock(nn.Module):
         super().__init__()
         # strided conv
         self.conv = nn.Conv2d(channels, channels, 3, 2, 0)
-    
+
     def forward(self, x):
         pad = (0, 1, 0, 1)
         x = F.pad(x, pad, mode="constant", value=0)
@@ -77,35 +76,33 @@ class NonLocalBlock(nn.Module):
         self.v = nn.Conv2d(channels, channels, 1, 1, 0)
 
         self.qkv = nn.Conv2d(channels, 3 * channels, 1, 1, 0)
-        
+
         self.proj = nn.Conv2d(channels, channels, 1, 1, 0)
-    
+
     def forward(self, x):
         y = self.gn(x)
         q, k, v = self.q(y), self.k(y), self.v(y)
 
         b, c, h, w = q.shape
 
-        q = q.reshape(b, c, h * w) # b, c hw
-        q = q.permute(0, 2, 1) # b, hw, c
+        q = q.reshape(b, c, h * w)  # b, c hw
+        q = q.permute(0, 2, 1)  # b, hw, c
         k = k.reshape(b, c, h * w)
         v = v.reshape(b, c, h * w)
 
-        att = q @ k # b, hw, hw
+        att = q @ k  # b, hw, hw
 
         att = att * (c**-0.5)
         att = F.softmax(att, dim=-1)
         att = att.permute(0, 2, 1)
-    
-        out =  v @ att # b, hw, c
+
+        out = v @ att  # b, hw, c
 
         out = out.reshape(b, c, h, w)
 
         out = self.proj(out)
 
         return x + out
-    
-
 
 
 if __name__ == "__main__":
@@ -124,12 +121,12 @@ if __name__ == "__main__":
 
         b, c, h, w = q.shape
 
-        q1 = q.clone().reshape(b, c, h * w) # b, c hw
-        q1 = q1.permute(0, 2, 1) # b, hw, c
+        q1 = q.clone().reshape(b, c, h * w)  # b, c hw
+        q1 = q1.permute(0, 2, 1)  # b, hw, c
         k1 = k.clone().reshape(b, c, h * w)
         v1 = v.clone().reshape(b, c, h * w)
 
-        att1 = q1 @ k1 # b, hw, hw
+        att1 = q1 @ k1  # b, hw, hw
 
         att1 = att1 * (c**-0.5)
         att1 = F.softmax(att1, dim=-1)
@@ -137,15 +134,15 @@ if __name__ == "__main__":
         print(f"v1={v1.shape}, att1={att1.shape}")
         # verify this!!!
         # att = att.permute(0, 2, 1) # softmax if distributed along vertical dim
-        y1 =  v1 @ att1 # b, hw, c
+        y1 = v1 @ att1  # b, hw, c
 
-        q2 = q.clone().reshape(b, c, h*w)
+        q2 = q.clone().reshape(b, c, h * w)
         q2 = q2.permute(0, 2, 1)
-        k2 = k.clone().reshape(b, c, h*w)
-        v2 = v.clone().reshape(b, c, h*w)
+        k2 = k.clone().reshape(b, c, h * w)
+        v2 = v.clone().reshape(b, c, h * w)
 
         attn2 = torch.bmm(q2, k2)
-        attn2 = attn2 * (int(c)**(-0.5))
+        attn2 = attn2 * (int(c) ** (-0.5))
         attn2 = F.softmax(attn2, dim=2)
         attn2 = attn2.permute(0, 2, 1)
 
@@ -155,7 +152,7 @@ if __name__ == "__main__":
 
         print(y1.shape, A.shape)
         print(torch.allclose(y1, A))
-    
+
     test()
 
     q = nn.Conv2d(2, 3, 1, 1, 0, bias=False)

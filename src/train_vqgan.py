@@ -1,14 +1,15 @@
-import hydra
 import logging
-import numpy as np
-from omegaconf import DictConfig, OmegaConf, open_dict
 import os
 from pathlib import Path
-from tqdm import tqdm
+
+import hydra
+import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.distributed as dist
+import torch.nn.functional as F
+from omegaconf import DictConfig, OmegaConf, open_dict
 from torch.nn.parallel import DistributedDataParallel as DDP
+from tqdm import tqdm
 
 from dataloader import get_dataloader
 from discriminator import NLayerDiscriminator
@@ -18,7 +19,7 @@ from meters import RunningMeter
 from utils import set_seed
 from vqgan import VQGAN
 
-logging.basicConfig(filename=None, encoding='utf-8', level=logging.DEBUG)
+logging.basicConfig(filename=None, encoding="utf-8", level=logging.DEBUG)
 
 
 def get_item(x: torch.Tensor) -> float:
@@ -34,14 +35,14 @@ class Trainer:
 
         self.last_epoch = -1
 
-        self.device_id = config.get('device_id', 0)
-        self.rank = config.get('rank', 0)
+        self.device_id = config.get("device_id", 0)
+        self.rank = config.get("rank", 0)
         self.ddp = config.ddp
         self.config = config
 
         if self.rank == 0:
-            self.logger = TensorboardLogger()
-        
+            self.logger = TensorboardLogger(self.output_dir / "logs")
+
         self.device = torch.device(f"{config.device}:{self.device_id}")
 
         self.vqgan = VQGAN(config).to(self.device)
@@ -50,45 +51,77 @@ class Trainer:
         self.world_size = 1
 
         if config.ddp:
-            self.vqgan = DDP(self.vqgan, device_ids=[self.device_id], find_unused_parameters=True) # sparse codebook update
+            self.vqgan = DDP(
+                self.vqgan, device_ids=[self.device_id], find_unused_parameters=True
+            )  # sparse codebook update
             self.disc = DDP(self.disc, device_ids=[self.device_id], find_unused_parameters=False)
 
             self.world_size = dist.get_world_size()
-        
+
             self.disc = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.disc)
 
         logging.info(f"World size = {self.world_size}")
 
-        self.opt_vqgan = torch.optim.Adam(self._unwrap(self.vqgan).parameters(),  lr=config.lr, betas=(config.beta1, config.beta2))
-        self.opt_disc = torch.optim.Adam(self._unwrap(self.disc).parameters(), lr=config.lr, betas=(config.beta1, config.beta2))
+        self.opt_vqgan = torch.optim.Adam(
+            self._unwrap(self.vqgan).parameters(), lr=config.lr, betas=(config.beta1, config.beta2)
+        )
+        self.opt_disc = torch.optim.Adam(
+            self._unwrap(self.disc).parameters(), lr=config.lr, betas=(config.beta1, config.beta2)
+        )
 
         if config.resume_from is not None:
             self._load_state(config.resume_from)
 
         self.perceptual_loss = LPIPS().eval().to(self.device)
 
-        self.train_dataloader = get_dataloader(config.data_path, config.img_size, config.batch_size, config.num_workers, config.ddp)
+        self.train_dataloader = get_dataloader(
+            config.data_path, config.img_size, config.batch_size, config.num_workers, config.ddp
+        )
         self.epochs = config.epochs
         self.disc_factor = config.disc_factor
         self.disc_start = config["disc_start"]
         self.perc_loss_factor = config.perc_loss_factor
         self.rec_loss_factor = config.rec_loss_factor
-        
-        track = ["train/running/q_loss", "train/running/perceptual_loss", "train/running/rec_loss", "train/running/disc_factor",
-                "train/running/lambda", "train/running/g_loss", "train/running/vq_loss", "train/running/d_loss",
-                "train/epoch/q_loss", "train/epoch/perceptual_loss", "train/epoch/rec_loss", "train/epoch/disc_factor",
-                "train/epoch/lambda", "train/epoch/g_loss", "train/epoch/vq_loss", "train/epoch/d_loss"]
-        
-        self.running_meters = {t: RunningMeter(window_size=self.log_every, ddp=self.ddp) for t in track if "running" in t}
-        self.epoch_meters = {t: RunningMeter(window_size=len(self.train_dataloader) // self.world_size, ddp=self.ddp) for t in track if "epoch" in t}
-    
+
+        track = [
+            "train/running/q_loss",
+            "train/running/perceptual_loss",
+            "train/running/rec_loss",
+            "train/running/disc_factor",
+            "train/running/lambda",
+            "train/running/g_loss",
+            "train/running/vq_loss",
+            "train/running/d_loss",
+            "train/epoch/q_loss",
+            "train/epoch/perceptual_loss",
+            "train/epoch/rec_loss",
+            "train/epoch/disc_factor",
+            "train/epoch/lambda",
+            "train/epoch/g_loss",
+            "train/epoch/vq_loss",
+            "train/epoch/d_loss",
+        ]
+
+        self.running_meters = {
+            t: RunningMeter(window_size=self.log_every, ddp=self.ddp)
+            for t in track
+            if "running" in t
+        }
+        self.epoch_meters = {
+            t: RunningMeter(
+                window_size=len(self.train_dataloader) // self.world_size, ddp=self.ddp
+            )
+            for t in track
+            if "epoch" in t
+        }
+
     def _unwrap(self, model):
         if self.ddp:
             return model.module
         return model
-    
+
     def _load_state(self, ckpt_path: str):
-        ckpt = torch.load(ckpt_path, map_location='cpu')
+        ckpt = torch.load(ckpt_path, map_location="cpu")
         self.last_epoch = ckpt["epoch"] if "epoch" in ckpt else 0
         self._unwrap(self.vqgan).load_state_dict(ckpt["vqgan"])
         self._unwrap(self.disc).load_state_dict(ckpt["disc"])
@@ -99,20 +132,24 @@ class Trainer:
             self.opt_disc.load_state_dict(ckpt["disc_opt"])
 
         logging.info(f"Resume training from {ckpt_path} from last epoch {self.last_epoch}")
-    
+
     def _save_checkpoint(self, epoch):
         if self.rank != 0:
             return
-        
+
         os.makedirs(self.output_dir / "checkpoints", exist_ok=True)
 
-        torch.save({"vqgan": self._unwrap(self.vqgan).state_dict(),
-                    "disc": self._unwrap(self.disc).state_dict(),
-                    "vqgan_opt": self.opt_vqgan.state_dict(),
-                    "disc_opt": self.opt_disc.state_dict(),
-                    "epoch": epoch},
-                    os.path.join(self.output_dir / "checkpoints", f"vqgan_disc_epoch_{epoch}.pt"))
-        
+        torch.save(
+            {
+                "vqgan": self._unwrap(self.vqgan).state_dict(),
+                "disc": self._unwrap(self.disc).state_dict(),
+                "vqgan_opt": self.opt_vqgan.state_dict(),
+                "disc_opt": self.opt_disc.state_dict(),
+                "epoch": epoch,
+            },
+            os.path.join(self.output_dir / "checkpoints", f"vqgan_disc_epoch_{epoch}.pt"),
+        )
+
     def train(self):
         steps_per_epoch = len(self.train_dataloader)
         start_epoch = self.last_epoch + 1
@@ -125,18 +162,22 @@ class Trainer:
                     batch = batch.to(self.device)
 
                     global_step = epoch * steps_per_epoch + i
-                    
+
                     rec, _, q_loss = self.vqgan(batch)
 
                     # vqgan update
                     perceptual_loss = self.perceptual_loss(batch, rec).mean()
-                    
+
                     rec_loss = torch.abs(batch - rec).mean()
-                    
-                    perc_rec_loss = self.perc_loss_factor * perceptual_loss + self.rec_loss_factor * rec_loss
+
+                    perc_rec_loss = (
+                        self.perc_loss_factor * perceptual_loss + self.rec_loss_factor * rec_loss
+                    )
 
                     fake_logits_gen = self.disc(rec)
-                    disc_factor = self._unwrap(self.vqgan).adopt_disc_weight(self.disc_factor, global_step, self.disc_start)
+                    disc_factor = self._unwrap(self.vqgan).adopt_disc_weight(
+                        self.disc_factor, global_step, self.disc_start
+                    )
                     gen_loss = -torch.mean(fake_logits_gen)
 
                     lamb = self._unwrap(self.vqgan).calculate_lambda(perc_rec_loss, gen_loss)
@@ -154,22 +195,26 @@ class Trainer:
                     d_loss_fake = torch.mean(F.relu(1.0 + fake_logits))
                     d_loss_real = torch.mean(F.relu(1.0 - real_logits))
                     d_loss = disc_factor * 0.5 * (d_loss_real + d_loss_fake)
-                    
+
                     self.opt_disc.zero_grad()
                     d_loss.backward()
                     self.opt_disc.step()
 
                     self.running_meters["train/running/q_loss"].update(get_item(q_loss))
-                    self.running_meters["train/running/perceptual_loss"].update(get_item(perceptual_loss))
+                    self.running_meters["train/running/perceptual_loss"].update(
+                        get_item(perceptual_loss)
+                    )
                     self.running_meters["train/running/rec_loss"].update(get_item(rec_loss))
                     self.running_meters["train/running/disc_factor"].update(disc_factor)
                     self.running_meters["train/running/lambda"].update(get_item(lamb))
                     self.running_meters["train/running/g_loss"].update(get_item(gen_loss))
                     self.running_meters["train/running/vq_loss"].update(get_item(vqgan_loss))
                     self.running_meters["train/running/d_loss"].update(get_item(d_loss))
-                    
+
                     self.epoch_meters["train/epoch/q_loss"].update(get_item(q_loss))
-                    self.epoch_meters["train/epoch/perceptual_loss"].update(get_item(perceptual_loss))
+                    self.epoch_meters["train/epoch/perceptual_loss"].update(
+                        get_item(perceptual_loss)
+                    )
                     self.epoch_meters["train/epoch/rec_loss"].update(get_item(rec_loss))
                     self.epoch_meters["train/epoch/disc_factor"].update(disc_factor)
                     self.epoch_meters["train/epoch/lambda"].update(get_item(lamb))
@@ -181,19 +226,27 @@ class Trainer:
                         with torch.no_grad():
                             batch = batch.detach().cpu()
                             rec = rec.detach().cpu()
-                            real_fake_images = torch.cat([batch[:3].add(1).mul(0.5), rec[:3].add(1).mul(0.5)], dim=2)
-                            
-                            logs = {name: meter.compute() for name, meter in self.running_meters.items()}
+                            real_fake_images = torch.cat(
+                                [batch[:3].add(1).mul(0.5), rec[:3].add(1).mul(0.5)], dim=2
+                            )
+
+                            logs = {
+                                name: meter.compute()
+                                for name, meter in self.running_meters.items()
+                            }
                             logs["train/img"] = real_fake_images
-                            
+
                             if self.rank == 0:
                                 self.logger.log(logs, global_step)
-                    
 
                     pbar.set_postfix(
                         EPOCH=epoch,
-                        VQ_Loss=np.round(self.running_meters["train/running/vq_loss"].compute(), 5),
-                        DISC_Loss=np.round(self.running_meters["train/running/d_loss"].compute(), 3)
+                        VQ_Loss=np.round(
+                            self.running_meters["train/running/vq_loss"].compute(), 5
+                        ),
+                        DISC_Loss=np.round(
+                            self.running_meters["train/running/d_loss"].compute(), 3
+                        ),
                     )
                     pbar.update(1)
 
@@ -211,7 +264,7 @@ def main(config: DictConfig):
     set_seed(3910574)
 
     if config.ddp:
-        logging.info(f"Setting up DDP!")
+        logging.info("Setting up DDP!")
         torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
         dist.init_process_group("nccl")
         rank = dist.get_rank()
@@ -224,21 +277,20 @@ def main(config: DictConfig):
 
     trainer = Trainer(config)
 
-    logging.info(f"Start training!")
+    logging.info("Start training!")
     trainer.train()
-    logging.info(f"Done training!")
+    logging.info("Done training!")
 
     if config.ddp:
         dist.destroy_process_group()
-        logging.info(f"Cleaned up DDP!")
+        logging.info("Cleaned up DDP!")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 
     # add color logging
     # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
-
 
     """
     If d_loss stays ~ desc_factor and g_loss too (or gradually increases) it's a good sign. It means that D slowly learns to distinguish

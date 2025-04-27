@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from blocks import ResidualBlock, NonLocalBlock, DownBlock, GroupNorm, Swish
+
+from blocks import DownBlock, GroupNorm, NonLocalBlock, ResidualBlock, Swish
 
 
 class Encoder(nn.Module):
@@ -8,7 +9,7 @@ class Encoder(nn.Module):
         super().__init__()
 
         channels = [128, 128, 128, 256, 256, 512]
-        attn_resolutions = set([16])
+        attn_resolutions = {16}
         num_res_blocks = 2
         resolution = 256
 
@@ -21,7 +22,7 @@ class Encoder(nn.Module):
                 in_ch = out_ch
                 if resolution in attn_resolutions:
                     layers.append(NonLocalBlock(in_ch))
-            
+
             if i != len(channels) - 2:
                 layers.append(DownBlock(channels[i + 1]))
                 resolution //= 2
@@ -33,7 +34,7 @@ class Encoder(nn.Module):
         layers.append(Swish())
         layers.append(nn.Conv2d(channels[-1], config["latent_dim"], 3, 1, 1))
         self.model = nn.Sequential(*layers)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
 
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     model = model.to(device)
 
     x = torch.rand((6, 3, 256, 256), device=device)
-    
+
     y = model(x)
 
     print(y.shape, y.device)

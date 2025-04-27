@@ -1,12 +1,13 @@
+import os
+
+import cv2
 import hydra
 import numpy as np
+import torch
 from omegaconf import DictConfig
-import cv2
 from tqdm import tqdm
 
 from transformer import VQGANTransformer
-import os
-import torch
 from utils import set_seed
 
 
@@ -16,10 +17,11 @@ def tensor_to_img(x: torch.Tensor):
     img = img.transpose(1, 2, 0)
     return np.clip(255 * img, 0, 255).astype(np.uint8)
 
+
 def save_img(img, save_dir, fname):
     cv2.imwrite(os.path.join(save_dir, f"{fname}.jpg"), cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
 
-                
+
 @hydra.main(config_path="../configs/", config_name="generate_images.yaml", version_base="1.3")
 def main(config: DictConfig):
     if config.random_seed is not None:
@@ -36,5 +38,5 @@ def main(config: DictConfig):
             pbar.update(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

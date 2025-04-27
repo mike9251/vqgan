@@ -19,17 +19,23 @@ class CausalSelfAttention(nn.Module):
         mask = torch.tril(torch.ones(config.block_size, config.block_size))
 
         if config.n_unmasked > 0:
-            mask[:config.n_unmasked, :config.n_unmasked] = 1
-        
+            mask[: config.n_unmasked, : config.n_unmasked] = 1
+
         self.register_buffer("mask", mask.view(1, 1, config.block_size, config.block_size))
         self.n_head = config.n_head
-    
+
     def forward(self, x, layer_past=None):
         B, T, C = x.shape
 
-        k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # B, n_head, T, head_embed
-        q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # B, n_head, T, head_embed
-        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # B, n_head, T, head_embed
+        k = (
+            self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        )  # B, n_head, T, head_embed
+        q = (
+            self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        )  # B, n_head, T, head_embed
+        v = (
+            self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        )  # B, n_head, T, head_embed
 
         present = torch.stack((k, v))
         if layer_past is not None:
@@ -37,14 +43,14 @@ class CausalSelfAttention(nn.Module):
             # append to the sequence
             k = torch.cat((prev_key, k), dim=-2)
             v = torch.cat((prev_value, v), dim=-2)
-        
-        att = (q @ k.transpose(-2, -1)) * (k.shape[-1]**-0.5)
+
+        att = (q @ k.transpose(-2, -1)) * (k.shape[-1] ** -0.5)
         if layer_past is None:
             att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
-        
+
         att = F.softmax(att, dim=-1)
         att = self.attn_drop(att)
-        y = att @ v # B, n_heads, T, head_size
+        y = att @ v  # B, n_heads, T, head_size
         y = y.transpose(1, 2).contiguous().view(B, T, C)
 
         y = self.resid_drop(self.proj(y))
@@ -63,11 +69,11 @@ class Block(nn.Module):
             nn.Linear(config.embed_dim * 4, config.embed_dim),
             nn.Dropout(config.resid_pdrop),
         )
-    
+
     def forward(self, x, layer_past=None, return_present=False):
         if return_present:
             assert not self.training
-            
+
         attn, present = self.attn(self.ln1(x), layer_past=layer_past)
 
         x = x + attn
@@ -75,8 +81,9 @@ class Block(nn.Module):
         x = x + self.mlp(self.ln2(x))
         if layer_past is not None or return_present:
             return x, present
-        
+
         return x
+
 
 class GPT(nn.Module):
     def __init__(self, config):
@@ -94,7 +101,7 @@ class GPT(nn.Module):
         self.config = config
 
         self.apply(self._init_weights)
-    
+
     def get_block_size(self):
         return self.config.block_size
 

@@ -1,9 +1,10 @@
-import torch
-from torch.utils.data import Dataset, DataLoader, DistributedSampler
-import cv2
-from pathlib import Path
-import numpy as np
 import random
+from pathlib import Path
+
+import cv2
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, Dataset, DistributedSampler
 
 
 class CelebaDataset(Dataset):
@@ -16,10 +17,10 @@ class CelebaDataset(Dataset):
     @staticmethod
     def transform(x):
         return (x / 127.5 - 1).astype(np.float32).transpose(2, 0, 1)
-    
+
     def __len__(self):
         return len(self.img_paths)
-    
+
     def __getitem__(self, idx):
         img_path = self.img_paths[idx]
 
@@ -28,6 +29,7 @@ class CelebaDataset(Dataset):
         img = self.transform(img)
 
         return img
+
 
 def get_dataloader(data_dir, img_size, batch_size, num_workers=0, ddp=False):
     dataset = CelebaDataset(data_dir, img_size)
@@ -41,13 +43,15 @@ def get_dataloader(data_dir, img_size, batch_size, num_workers=0, ddp=False):
     g = torch.Generator()
     g.manual_seed(0)
 
-    dataloader = DataLoader(dataset,
-                            batch_size=batch_size,
-                            num_workers=num_workers,
-                            shuffle=(sampler is None),
-                            sampler=sampler,
-                            worker_init_fn=seed_worker,
-                            generator=g)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=(sampler is None),
+        sampler=sampler,
+        worker_init_fn=seed_worker,
+        generator=g,
+    )
     return dataloader
 
 
@@ -67,8 +71,9 @@ if __name__ == "__main__":
     #     if i < 5:
     #         print(batch.shape, batch.dtype)
 
-    
-    dataloader2 = get_dataloader("<path-to>/celeba_hq_256", img_size=256, batch_size=3, num_workers=0, ddp=False)
+    dataloader2 = get_dataloader(
+        "<path-to>/celeba_hq_256", img_size=256, batch_size=3, num_workers=0, ddp=False
+    )
     print(f"Num batches = {len(dataloader2)}")
     for i, batch in enumerate(dataloader2):
         if i < 5:
