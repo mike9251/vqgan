@@ -88,11 +88,8 @@ class NetLinLayer(nn.Module):
 class vgg16(torch.nn.Module):
     def __init__(self, requires_grad=False, pretrained=True):
         super().__init__()
-        vgg_pretrained_features = models.vgg16(weights=False)  # .features
-        vgg_pretrained_features.load_state_dict(
-            torch.load("/Users/petrushkovm/Projects/VQGAN/vgg16-397923af.pth")
-        )
-        vgg_pretrained_features = vgg_pretrained_features.features
+        vgg_pretrained_features = models.vgg16(weights="IMAGENET1K_V1").features
+
         self.slice1 = torch.nn.Sequential()
         self.slice2 = torch.nn.Sequential()
         self.slice3 = torch.nn.Sequential()
