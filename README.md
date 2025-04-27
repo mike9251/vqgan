@@ -81,6 +81,8 @@ I trained this model for ~9 hours (47 epochs) using 2x Nvidia 4090 GPUs.
 torchrun --standalone --nnodes --nproc_per_node=2 src/train_transformer.py data_path=<path-to-celeba-dataset> log_dir=<where-to-store-logs> batch_size=64 num_workers=8 lr=1.4e-4 ddp=True
 ```
 
+![alt text](img/image-4.png)
+
 # Inference
 
 After both models are trained:
